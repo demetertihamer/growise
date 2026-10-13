@@ -573,7 +573,7 @@ export const ModuleWorkspace = ({ module, user, language }: ModuleWorkspaceProps
           </form>
           <h3 className="module-section-heading">Past entries</h3>
           <div className="module-list">
-            {entries.length === 0 ? <EmptyState text="Your private reflections stay on this device." /> : [...entries].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8).map((entry) => <div className="module-history-button" key={entry.id}><span><strong>{formatDate(entry.date)}</strong><small>{entry.mood}</small></span><span>{entry.markdown}</span></div>)}
+            {entries.length === 0 ? <EmptyState text="Your private reflections will appear here." /> : [...entries].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8).map((entry) => <div className="module-history-button" key={entry.id}><span><strong>{formatDate(entry.date)}</strong><small>{entry.mood}</small></span><span>{entry.markdown}</span></div>)}
           </div>
         </div>
       );

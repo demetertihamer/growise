@@ -17,11 +17,8 @@ import {
   ListTodo,
   LockKeyhole,
   LogOut,
-  Monitor,
   NotebookPen,
   Settings2,
-  Moon,
-  Sun,
   Timer,
   Target,
   Wallet,
@@ -55,16 +52,6 @@ const getGreeting = (hour: number) => {
   return 'Good evening';
 };
 
-const now = new Date();
-const DATE_INFO = {
-  today: new Intl.DateTimeFormat(undefined, {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  }).format(now),
-  greeting: getGreeting(now.getHours()),
-};
-
 export const MainApp = () => {
   const user = useUserStore((state) => state.user);
   const logout = useUserStore((state) => state.logout);
@@ -72,6 +59,14 @@ export const MainApp = () => {
   const updatePreferences = useUserStore((state) => state.updatePreferences);
   const language = (user?.preferences.language ?? 'en') as Language;
   const t = (text: string) => translate(language, text);
+  const now = new Date();
+  const locale = language === 'hu' ? 'hu-HU' : 'en-US';
+  const today = new Intl.DateTimeFormat(locale, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).format(now);
+  const greeting = t(getGreeting(now.getHours()));
   const [selectedModule, setSelectedModule] = useState<ModuleKey | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -219,8 +214,6 @@ export const MainApp = () => {
     moveCarousel(deltaX < 0 ? 1 : -1);
   };
 
-  const today = DATE_INFO.today;
-
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -234,7 +227,7 @@ export const MainApp = () => {
         <div className="header-actions">
           <button className="header-link" type="button" onClick={() => setIsSettingsOpen(true)}>
             <Settings2 size={17} />
-            <span>Settings</span>
+            <span>{t('Settings')}</span>
           </button>
           <span className="header-divider" />
           <span className="user-avatar" aria-label={user?.username}>
@@ -249,7 +242,7 @@ export const MainApp = () => {
       <section className="workspace">
         <div className="workspace-topline">
           <span className="date-pill"><span className="date-dot" />{today}</span>
-          <span className="private-label"><LockIcon /> Private to this device</span>
+          <span className="private-label"><LockIcon /> {t('Synced to your account')}</span>
         </div>
 
         {selectedConfig ? (
@@ -271,8 +264,8 @@ export const MainApp = () => {
         ) : (
           <div className="dashboard">
             <p className="eyebrow">{today.toUpperCase()}</p>
-            <h1>{t(DATE_INFO.greeting)}, {user?.username.split(' ')[0] || t('there')}<span className="title-period">.</span></h1>
-            <p className="dashboard-intro">A little space to make progress on what matters to you.</p>
+            <h1>{greeting}, {user?.username.split(' ')[0] || t('there')}<span className="title-period">.</span></h1>
+            <p className="dashboard-intro">{t('A little space to make progress on what matters to you.')}</p>
 
             <div className="dashboard-card">
               <div className="dashboard-card-heading">
@@ -430,22 +423,15 @@ export const MainApp = () => {
             <div className="appearance-setting">
               <div className="appearance-copy">
                 <strong>{t('Appearance')}</strong>
-                <span>{t('Choose how Growise looks on this device.')}</span>
+                <span>{t('Choose how Growise looks.')}</span>
               </div>
-              <div className="theme-options" role="group" aria-label="Color theme">
+              <div className="theme-options" role="group" aria-label={t('Appearance')}>
                 {([
-                  { value: 'light', label: t('Light'), Icon: Sun },
-                  { value: 'dark', label: t('Dark'), Icon: Moon },
-                  { value: 'system', label: t('System'), Icon: Monitor },
-                ] as const).map(({ value, label, Icon }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={`theme-option ${user?.preferences.theme === value ? 'is-active' : ''}`}
-                    aria-pressed={user?.preferences.theme === value}
-                    onClick={() => updatePreferences({ theme: value })}
-                  >
-                    <Icon size={15} />
+                  { value: 'light', label: t('Light') },
+                  { value: 'dark', label: t('Dark') },
+                  { value: 'system', label: t('System') },
+                ] as const).map(({ value, label }) => (
+                  <button key={value} type="button" className={`theme-option ${user?.preferences.theme === value ? 'is-active' : ''}`} aria-pressed={user?.preferences.theme === value} onClick={() => updatePreferences({ theme: value })}>
                     {label}
                   </button>
                 ))}
@@ -489,7 +475,7 @@ export const MainApp = () => {
               })}
             </div>
             <div className="settings-footer">
-              <span className="local-note"><LockIcon /> {t('Saved on this device')}</span>
+              <span className="local-note"><LockIcon /> {t('Synchronized with your account')}</span>
               <button className="primary-button" type="button" onClick={() => setIsSettingsOpen(false)}>{t('Done')}</button>
             </div>
           </section>

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { ModuleKey, User, UserPreferences } from '@/shared/types';
+import { isSupabaseConfigured } from '@/infrastructure/supabase/config';
 
 interface UserStore {
   user: User | null;
@@ -27,13 +28,18 @@ export const useUserStore = create<UserStore>()(
       login: () => set({ isAuthenticated: true }),
 
       logout: () =>
-        set({ isAuthenticated: false }),
+        set((state) => {
+          if (isSupabaseConfigured) {
+            void import('@/infrastructure/supabase/client').then(({ supabase }) => supabase?.auth.signOut());
+          }
+          return { ...state, isAuthenticated: false, user: null };
+        }),
 
       updatePreferences: (preferences: Partial<UserPreferences>) =>
         set((state) => {
           if (!state.user) return state;
           const now = new Date().toISOString();
-          return {
+          const next = {
             user: {
               ...state.user,
               preferences: {
@@ -44,6 +50,14 @@ export const useUserStore = create<UserStore>()(
               updatedAt: now,
             },
           };
+          if (isSupabaseConfigured) {
+            queueMicrotask(() => {
+              void import('@/infrastructure/supabase/cloudSync').then(({ saveCloudProfile }) => saveCloudProfile(next.user)).catch((error: unknown) => {
+                console.error('Growise cloud profile sync failed.', error);
+              });
+            });
+          }
+          return next;
         }),
 
       toggleModule: (moduleKey: ModuleKey) =>
@@ -52,7 +66,7 @@ export const useUserStore = create<UserStore>()(
           const enabledModules = state.user.preferences.enabledModules;
           const isEnabled = enabledModules.includes(moduleKey);
           const now = new Date().toISOString();
-          return {
+          const next = {
             user: {
               ...state.user,
               preferences: {
@@ -65,6 +79,14 @@ export const useUserStore = create<UserStore>()(
               updatedAt: now,
             },
           };
+          if (isSupabaseConfigured) {
+            queueMicrotask(() => {
+              void import('@/infrastructure/supabase/cloudSync').then(({ saveCloudProfile }) => saveCloudProfile(next.user)).catch((error: unknown) => {
+                console.error('Growise cloud profile sync failed.', error);
+              });
+            });
+          }
+          return next;
         }),
     }),
     {

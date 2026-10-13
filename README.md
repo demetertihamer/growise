@@ -2,6 +2,22 @@
 
 Growise is a local-first personal productivity and growth workspace.
 
+## Cloud sync
+
+Growise supports Supabase email/password accounts and synchronizes the user profile,
+preferences, workspace collections, and focus timer state across devices.
+Before authentication, the interface follows the operating system theme. After
+sign-in, each user can choose Light, Dark, or System in Settings, and that
+preference is synchronized with the account.
+
+1. Copy `.env.example` to `.env.local`.
+2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to the browser-safe Supabase project values.
+3. Run `supabase/migrations/0001_growise_cloud_sync.sql` in the Supabase SQL editor.
+4. Start the app with `npm run dev`.
+
+Only the publishable/anon key belongs in the browser. Never place a Supabase
+service-role key in `.env.local` or source control.
+
 ## Development
 
 ```sh

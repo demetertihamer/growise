@@ -19,6 +19,7 @@ import type {
   Transaction,
   WorkoutSession,
 } from '@/shared/types';
+import { isSupabaseConfigured } from '@/infrastructure/supabase/config';
 
 interface WorkspaceCollections {
   tasks: Task;
@@ -121,6 +122,7 @@ interface WorkspaceState {
   ) => void;
   remove: (userId: string, collection: CollectionName, id: string) => void;
   setFocusTimer: (userId: string, timer: FocusTimerState) => void;
+  hydrateFromCloud: (userId: string) => Promise<void>;
 }
 
 const addToCollection = <K extends CollectionName>(
@@ -153,13 +155,24 @@ const removeFromCollection = (
   [collection]: (data[collection] ?? []).filter((item) => item.id !== id),
 });
 
+const syncWorkspace = (userId: string, state: WorkspaceState) => {
+  if (!isSupabaseConfigured) return;
+  void import('@/infrastructure/supabase/cloudSync')
+    .then(({ saveCloudWorkspace }) => saveCloudWorkspace(userId, {
+      dataByUser: { [userId]: state.dataByUser[userId] ?? EMPTY_WORKSPACE },
+      focusTimers: { [userId]: state.focusTimers[userId] ?? EMPTY_FOCUS_TIMER },
+    }))
+    .catch((error: unknown) => console.error('Growise cloud workspace sync failed.', error));
+};
+
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       dataByUser: {},
       focusTimers: {},
       add: (userId, collection, item) =>
-        set((state) => ({
+        set((state) => {
+          const next = {
           dataByUser: {
             ...state.dataByUser,
             [userId]: addToCollection(
@@ -168,9 +181,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               item,
             ),
           },
-        })),
+          };
+          queueMicrotask(() => syncWorkspace(userId, get()));
+          return next;
+        }),
       update: (userId, collection, id, patch) =>
-        set((state) => ({
+        set((state) => {
+          const next = {
           dataByUser: {
             ...state.dataByUser,
             [userId]: updateCollection(
@@ -180,9 +197,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               patch,
             ),
           },
-        })),
+          };
+          queueMicrotask(() => syncWorkspace(userId, get()));
+          return next;
+        }),
       remove: (userId, collection, id) =>
-        set((state) => ({
+        set((state) => {
+          const next = {
           dataByUser: {
             ...state.dataByUser,
             [userId]: removeFromCollection(
@@ -191,11 +212,32 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               id,
             ),
           },
-        })),
+          };
+          queueMicrotask(() => syncWorkspace(userId, get()));
+          return next;
+        }),
       setFocusTimer: (userId, timer) =>
-        set((state) => ({
-          focusTimers: { ...state.focusTimers, [userId]: timer },
-        })),
+        set((state) => {
+          const next = { focusTimers: { ...state.focusTimers, [userId]: timer } };
+          queueMicrotask(() => syncWorkspace(userId, get()));
+          return next;
+        }),
+      hydrateFromCloud: async (userId) => {
+        if (!isSupabaseConfigured) return;
+        const { loadCloudAccount } = await import('@/infrastructure/supabase/cloudSync');
+        const remote = await loadCloudAccount(userId);
+        if (!remote.workspace) return;
+        set({
+          dataByUser: {
+            ...get().dataByUser,
+            [userId]: normalizeWorkspace(remote.workspace.dataByUser[userId] as Partial<WorkspaceData> | undefined),
+          },
+          focusTimers: {
+            ...get().focusTimers,
+            ...(remote.workspace.focusTimers ?? {}),
+          },
+        });
+      },
     }),
     { name: 'growise-workspace-v1' },
   ),
