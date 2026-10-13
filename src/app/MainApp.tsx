@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUpRight,
+  ChevronLeft,
+  ChevronRight,
   BookHeart,
   CalendarDays,
   ChartNoAxesColumnIncreasing,
-  ChevronLeft,
-  ChevronRight,
   ChevronDown,
-  CircleHelp,
   Command,
   Dumbbell,
+  FolderKanban,
+  GripVertical,
   Leaf,
+  Link2,
   LayoutGrid,
   ListTodo,
   LockKeyhole,
@@ -26,15 +28,18 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import type { CSSProperties, TouchEvent, WheelEvent } from 'react';
 import { useUserStore } from '@/infrastructure/auth/useUserStore';
 import { MODULE_REGISTRY } from '@/shared/domain/moduleRegistry';
 import type { ModuleKey } from '@/shared/types';
-import { calculateArcPositions } from '@/shared/lib/circleMenu';
+import { moduleDescription, moduleName, translate, type Language } from '@/shared/i18n';
+import { ModuleWorkspace } from './ModuleWorkspace';
+import type { CSSProperties, TouchEvent } from 'react';
 
 const MODULE_ICONS: Record<string, LucideIcon> = {
   ListTodo,
+  FolderKanban,
   NotebookPen,
+  Link2,
   Timer,
   ChartNoAxesColumnIncreasing,
   CalendarDays,
@@ -65,38 +70,54 @@ export const MainApp = () => {
   const logout = useUserStore((state) => state.logout);
   const toggleModule = useUserStore((state) => state.toggleModule);
   const updatePreferences = useUserStore((state) => state.updatePreferences);
+  const language = (user?.preferences.language ?? 'en') as Language;
+  const t = (text: string) => translate(language, text);
   const [selectedModule, setSelectedModule] = useState<ModuleKey | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [supportsHover, setSupportsHover] = useState(false);
-  const [mobileModuleIndex, setMobileModuleIndex] = useState(0);
+  const [isDesktopLauncher, setIsDesktopLauncher] = useState(false);
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const [draggedModule, setDraggedModule] = useState<ModuleKey | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const carouselPointerX = useRef<number | null>(null);
 
   const modules = useMemo(
     () =>
       (user?.preferences.enabledModules ?? [])
         .map((key) => MODULE_REGISTRY[key])
-        .sort((a, b) => a.order - b.order),
+        .filter(Boolean),
     [user?.preferences.enabledModules],
   );
-  const hasManyModules = modules.length > 6;
-  const positions = calculateArcPositions(
-    modules.length,
-    supportsHover ? (hasManyModules ? 450 : 280) : (hasManyModules ? 150 : 124),
-    hasManyModules ? 205 : 210,
-    hasManyModules ? 335 : 330,
-  );
+  const activeModuleIndex = modules.length ? carouselIndex % modules.length : 0;
+  const visibleModules = isDesktopLauncher
+    ? modules.map((module, index) => ({ module, index, offset: index }))
+    : modules
+    .map((module, index) => {
+      let offset = (index - activeModuleIndex + modules.length) % modules.length;
+      if (offset > modules.length / 2) offset -= modules.length;
+      return { module, index, offset };
+    })
+    .filter(({ offset }) => Math.abs(offset) <= 2);
   const selectedConfig = selectedModule ? MODULE_REGISTRY[selectedModule] : null;
-  const mobileModule = modules.length > 0
-    ? modules[mobileModuleIndex % modules.length]
-    : null;
+  const desktopModuleGap = Math.min(
+    64,
+    Math.max(36, (window.innerHeight - 120) / Math.max(1, modules.length - 1)),
+  );
 
   useEffect(() => {
     const media = window.matchMedia('(hover: hover) and (pointer: fine)');
+    const desktopMedia = window.matchMedia('(min-width: 1100px) and (hover: hover) and (pointer: fine)');
     const update = () => setSupportsHover(media.matches);
+    const updateDesktop = () => setIsDesktopLauncher(desktopMedia.matches);
     update();
+    updateDesktop();
     media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
+    desktopMedia.addEventListener('change', updateDesktop);
+    return () => {
+      media.removeEventListener('change', update);
+      desktopMedia.removeEventListener('change', updateDesktop);
+    };
   }, []);
 
   useEffect(() => {
@@ -116,37 +137,86 @@ export const MainApp = () => {
     if (isEnabled && selectedModule === module) setSelectedModule(null);
   };
 
+  const reorderModules = (source: ModuleKey, target: ModuleKey) => {
+    if (source === target || !user) return;
+    const ordered = [...user.preferences.enabledModules];
+    const sourceIndex = ordered.indexOf(source);
+    const targetIndex = ordered.indexOf(target);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    ordered.splice(sourceIndex, 1);
+    ordered.splice(targetIndex, 0, source);
+    updatePreferences({ enabledModules: ordered });
+  };
+
   const selectModule = (module: ModuleKey) => {
     setSelectedModule(module);
     setIsMenuOpen(false);
+    const index = modules.findIndex((item) => item.key === module);
+    if (index >= 0) setCarouselIndex(index);
   };
 
-  const moveMobileModule = (direction: number) => {
+  const moveCarousel = (direction: number) => {
     if (modules.length < 2) return;
-    setMobileModuleIndex((index) => (index + direction + modules.length) % modules.length);
+    setCarouselIndex((index) => (index + direction + modules.length) % modules.length);
   };
 
-  const handleMobileWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (Math.abs(event.deltaX) < 8 && Math.abs(event.deltaY) < 8) return;
-    event.preventDefault();
-    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
-      ? event.deltaX
-      : event.deltaY;
-    moveMobileModule(delta > 0 ? 1 : -1);
-  };
+  useEffect(() => {
+    if (!isMenuOpen || !supportsHover || isDesktopLauncher || modules.length < 2) return;
 
-  const handleMobileTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
+    let animationFrame = 0;
+    let previousTime = 0;
+    let progress = 0;
+    let previousDirection = 0;
+    const centerDeadZone = 42;
+
+    const animateCarousel = (time: number) => {
+      if (previousTime) {
+        const pointerX = carouselPointerX.current;
+        if (pointerX === null) {
+          progress = 0;
+          previousDirection = 0;
+        } else {
+          const distanceFromCenter = pointerX - window.innerWidth / 2;
+          const direction = Math.abs(distanceFromCenter) <= centerDeadZone
+            ? 0
+            : Math.sign(distanceFromCenter);
+
+          if (!direction || (previousDirection && direction !== previousDirection)) {
+            progress = 0;
+          }
+          if (direction) {
+            const availableDistance = Math.max(1, window.innerWidth / 2 - centerDeadZone);
+            const intensity = Math.min(
+              1,
+              (Math.abs(distanceFromCenter) - centerDeadZone) / availableDistance,
+            );
+            progress += ((time - previousTime) / 1000) * (1 + intensity);
+            if (progress >= 1) {
+              const steps = Math.floor(progress);
+              setCarouselIndex((index) => (index + direction * steps + modules.length * steps) % modules.length);
+              progress -= steps;
+            }
+          }
+          previousDirection = direction;
+        }
+      }
+      previousTime = time;
+      animationFrame = window.requestAnimationFrame(animateCarousel);
+    };
+
+    animationFrame = window.requestAnimationFrame(animateCarousel);
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [isMenuOpen, modules.length, supportsHover, isDesktopLauncher]);
+
+  const handleCarouselTouchEnd = (event: TouchEvent<HTMLElement>) => {
     const start = touchStart.current;
     touchStart.current = null;
     const end = event.changedTouches[0];
     if (!start || !end) return;
 
     const deltaX = end.clientX - start.x;
-    const deltaY = end.clientY - start.y;
-    if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 28) return;
-
-    const forward = Math.abs(deltaX) > Math.abs(deltaY) ? deltaX < 0 : deltaY < 0;
-    moveMobileModule(forward ? 1 : -1);
+    if (Math.abs(deltaX) < 35) return;
+    moveCarousel(deltaX < 0 ? 1 : -1);
   };
 
   const today = DATE_INFO.today;
@@ -193,36 +263,30 @@ export const MainApp = () => {
                 return <Icon size={24} strokeWidth={1.7} />;
               })()}
             </span>
-            <p className="eyebrow">YOUR WORKSPACE</p>
-            <h1>{selectedConfig.name}</h1>
-            <p className="workspace-copy">{selectedConfig.description}</p>
-            <div className="coming-card">
-              <div className="coming-card-icon"><CircleHelp size={20} /></div>
-              <div>
-                <h2>Your {selectedConfig.name.toLowerCase()} space is ready.</h2>
-                <p>This module will grow here as we build out your workspace.</p>
-              </div>
-            </div>
+            <p className="eyebrow">{t('YOUR WORKSPACE')}</p>
+            <h1>{moduleName(language, selectedConfig.key, selectedConfig.name)}</h1>
+            <p className="workspace-copy">{moduleDescription(language, selectedConfig.key, selectedConfig.description)}</p>
+            {user && <ModuleWorkspace key={selectedConfig.key} module={selectedConfig.key} user={user} language={language} />}
           </div>
         ) : (
           <div className="dashboard">
             <p className="eyebrow">{today.toUpperCase()}</p>
-            <h1>{DATE_INFO.greeting}, {user?.username.split(' ')[0] || 'there'}<span className="title-period">.</span></h1>
+            <h1>{t(DATE_INFO.greeting)}, {user?.username.split(' ')[0] || t('there')}<span className="title-period">.</span></h1>
             <p className="dashboard-intro">A little space to make progress on what matters to you.</p>
 
             <div className="dashboard-card">
               <div className="dashboard-card-heading">
                 <span className="dashboard-card-icon"><Command size={18} /></span>
-                <span className="eyebrow">YOUR SPACE</span>
+                <span className="eyebrow">{t('YOUR SPACE')}</span>
               </div>
-              <h2>{modules.length ? 'Your tools, all in one place.' : 'Start with a space that feels like yours.'}</h2>
+              <h2>{t(modules.length ? 'Your tools, all in one place.' : 'Start with a space that feels like yours.')}</h2>
               <p>
                 {modules.length
-                  ? 'Open your Growise menu to jump into a module. You can update your setup in Settings at any time.'
-                  : 'Choose the tools you want to use from Settings. Nothing you don’t need has to be here.'}
+                  ? t('Open your Growise menu to jump into a module. You can update your setup in Settings at any time.')
+                  : t('Choose the tools you want to use from Settings. Nothing you don’t need has to be here.')}
               </p>
               <button className="text-action" type="button" onClick={() => setIsSettingsOpen(true)}>
-                {modules.length ? 'Manage your tools' : 'Choose your tools'}
+                {t(modules.length ? 'Manage your tools' : 'Choose your tools')}
                 <ArrowUpRight size={16} />
               </button>
               <div className="dashboard-decoration" aria-hidden="true">
@@ -234,14 +298,29 @@ export const MainApp = () => {
 
             {modules.length > 0 && (
               <div className="module-summary">
-                <span className="eyebrow">YOUR MODULES</span>
+                <span className="eyebrow">{t('YOUR MODULES')}</span>
                 <div className="summary-list">
                   {modules.map((module) => {
                     const Icon = MODULE_ICONS[module.icon] ?? LayoutGrid;
                     return (
-                      <button key={module.key} type="button" onClick={() => selectModule(module.key)}>
+                      <button
+                        key={module.key}
+                        type="button"
+                        draggable
+                        className={draggedModule === module.key ? 'is-dragging' : ''}
+                        onDragStart={() => setDraggedModule(module.key)}
+                        onDragEnd={() => setDraggedModule(null)}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={() => {
+                          if (draggedModule) reorderModules(draggedModule, module.key);
+                          setDraggedModule(null);
+                        }}
+                        onClick={() => selectModule(module.key)}
+                        aria-label={`${t('Open')} ${moduleName(language, module.key, module.name)}. ${t('Drag to reorder.')}`}
+                      >
+                        <GripVertical size={14} className="summary-drag-handle" aria-hidden="true" />
                         <span className="summary-icon"><Icon size={16} /></span>
-                        {module.name}
+                        {moduleName(language, module.key, module.name)}
                         <ArrowUpRight size={14} className="summary-arrow" />
                       </button>
                     );
@@ -253,107 +332,85 @@ export const MainApp = () => {
         )}
       </section>
 
-      {isMenuOpen && (
-        <button
-          className="menu-backdrop"
-          type="button"
-          aria-label="Close module menu"
-          onClick={() => setIsMenuOpen(false)}
-        />
-      )}
-      <div
-        className={`radial-menu ${isMenuOpen ? 'is-open' : ''} ${hasManyModules ? 'has-many' : ''} ${supportsHover ? '' : 'is-touch'}`}
+      <nav
+        className={`modules-carousel ${isMenuOpen ? 'is-open' : ''} ${isDesktopLauncher ? 'is-desktop' : ''}`}
         aria-label="Module menu"
-        onMouseLeave={() => {
+        onPointerMove={(event) => {
+          if (isMenuOpen && supportsHover && !isDesktopLauncher) carouselPointerX.current = event.clientX;
+        }}
+        onPointerEnter={() => {
+          if (supportsHover) setIsMenuOpen(true);
+        }}
+        onPointerLeave={() => {
+          carouselPointerX.current = null;
           if (supportsHover) setIsMenuOpen(false);
         }}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) setIsMenuOpen(false);
+        onTouchStart={(event) => {
+          const touch = event.touches[0];
+          if (touch) touchStart.current = { x: touch.clientX, y: touch.clientY };
+        }}
+        onTouchEnd={handleCarouselTouchEnd}
+        onKeyDown={(event) => {
+          if (isDesktopLauncher) return;
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault();
+            moveCarousel(event.key === 'ArrowRight' ? 1 : -1);
+          }
         }}
       >
-        {!supportsHover && isMenuOpen && mobileModule && (
-          <div
-            className="mobile-module-picker"
-            onWheel={handleMobileWheel}
-            onTouchStart={(event) => {
-              const touch = event.touches[0];
-              if (touch) touchStart.current = { x: touch.clientX, y: touch.clientY };
-            }}
-            onTouchEnd={handleMobileTouchEnd}
-          >
-            <button
-              type="button"
-              className="mobile-picker-arrow"
-              aria-label="Previous module"
-              onClick={() => moveMobileModule(-1)}
-              disabled={modules.length < 2}
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button
-              type="button"
-              className="mobile-picker-current"
-              aria-label={`Open ${mobileModule.name}`}
-              onClick={() => selectModule(mobileModule.key)}
-            >
-              {(() => {
-                const Icon = MODULE_ICONS[mobileModule.icon] ?? LayoutGrid;
-                return <span className="mobile-picker-icon"><Icon size={25} strokeWidth={1.8} /></span>;
-              })()}
-              <span className="mobile-picker-label">{mobileModule.name}</span>
-            </button>
-            <button
-              type="button"
-              className="mobile-picker-arrow"
-              aria-label="Next module"
-              onClick={() => moveMobileModule(1)}
-              disabled={modules.length < 2}
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
-        )}
-        {modules.map((module, index) => {
+        {isMenuOpen && visibleModules.map(({ module, index, offset }) => {
           const Icon = MODULE_ICONS[module.icon] ?? LayoutGrid;
-          const position = positions[index];
+          const distance = Math.abs(offset);
           return (
             <button
-              className="radial-item"
-              key={module.key}
+              className={`carousel-item ${distance === 0 ? 'is-active' : ''}`}
+              key={`carousel-slot-${offset}`}
               type="button"
-              tabIndex={isMenuOpen ? 0 : -1}
-              aria-hidden={!isMenuOpen}
-              aria-label={`Open ${module.name}`}
-              title={module.name}
+              aria-current={distance === 0 ? 'true' : undefined}
+              aria-label={distance === 0 ? `${t('Open')} ${moduleName(language, module.key, module.name)}` : `${t('Select')} ${moduleName(language, module.key, module.name)}`}
               style={{
-                '--item-x': `${position?.x ?? 0}px`,
-                '--item-y': `${position?.y ?? 0}px`,
-                '--item-delay': `${index * 35}ms`,
+                '--carousel-x': `${offset * 88}px`,
+                '--carousel-y': `${isDesktopLauncher ? (index - (modules.length - 1) / 2) * desktopModuleGap : offset * 88}px`,
+                '--carousel-bottom': `${distance === 0 ? 154 : distance === 1 ? 123 : 84}px`,
+                '--carousel-opacity': isDesktopLauncher ? 1 : distance === 0 ? 1 : distance === 1 ? 0.72 : 0.46,
+                '--carousel-scale': isDesktopLauncher ? 1 : distance === 0 ? 1 : distance === 1 ? 0.9 : 0.8,
+                '--carousel-delay': `${distance * 45}ms`,
               } as CSSProperties}
-              onMouseEnter={() => {
-                if (supportsHover) setIsMenuOpen(true);
+              onClick={() => {
+                if (isDesktopLauncher || offset === 0) {
+                  setIsMenuOpen(false);
+                  selectModule(module.key);
+                } else {
+                  setCarouselIndex(index);
+                }
               }}
-              onClick={() => selectModule(module.key)}
             >
-              <span className="radial-item-icon"><Icon size={21} strokeWidth={1.8} /></span>
-              <span className="radial-item-label">{module.name}</span>
+              <span className="carousel-item-icon"><Icon size={distance === 0 ? 25 : 20} strokeWidth={1.8} /></span>
+              <span className="carousel-item-label">{moduleName(language, module.key, module.name)}</span>
             </button>
           );
         })}
         <button
-          className="launcher-button"
+          className="carousel-trigger"
           type="button"
-          aria-label={isMenuOpen ? 'Close module menu' : 'Open module menu'}
+          aria-label={isMenuOpen ? 'Close modules' : 'Open modules'}
           aria-expanded={isMenuOpen}
           onMouseEnter={() => {
             if (supportsHover) setIsMenuOpen(true);
           }}
           onClick={() => setIsMenuOpen((open) => !open)}
         >
-          {isMenuOpen ? <X size={23} /> : <span className="launcher-grid"><span /><span /><span /><span /></span>}
+          {isMenuOpen ? <ChevronLeft size={22} /> : <ChevronRight size={22} />}
         </button>
-        <span className="launcher-caption">{isMenuOpen ? 'CLOSE' : 'EXPLORE'}</span>
-      </div>
+      </nav>
+      {isMenuOpen && (
+        <button
+          className="menu-backdrop is-open"
+          type="button"
+          aria-label="Close module menu"
+          onClick={() => setIsMenuOpen(false)}
+        />
+      )}
 
       {isSettingsOpen && (
         <div className="settings-overlay" onMouseDown={(event) => {
@@ -362,24 +419,24 @@ export const MainApp = () => {
           <section className="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
             <div className="settings-header">
               <div>
-                <p className="eyebrow">PERSONALIZE</p>
-                <h2 id="settings-title">Your settings</h2>
+                <p className="eyebrow">{t('PERSONALIZE')}</p>
+                <h2 id="settings-title">{t('Your settings')}</h2>
               </div>
               <button className="icon-button" type="button" aria-label="Close settings" onClick={() => setIsSettingsOpen(false)}>
                 <X size={19} />
               </button>
             </div>
-            <p className="settings-description">Turn tools on or off whenever your needs change.</p>
+            <p className="settings-description">{t('Turn tools on or off whenever your needs change.')}</p>
             <div className="appearance-setting">
               <div className="appearance-copy">
-                <strong>Appearance</strong>
-                <span>Choose how Growise looks on this device.</span>
+                <strong>{t('Appearance')}</strong>
+                <span>{t('Choose how Growise looks on this device.')}</span>
               </div>
               <div className="theme-options" role="group" aria-label="Color theme">
                 {([
-                  { value: 'light', label: 'Light', Icon: Sun },
-                  { value: 'dark', label: 'Dark', Icon: Moon },
-                  { value: 'system', label: 'System', Icon: Monitor },
+                  { value: 'light', label: t('Light'), Icon: Sun },
+                  { value: 'dark', label: t('Dark'), Icon: Moon },
+                  { value: 'system', label: t('System'), Icon: Monitor },
                 ] as const).map(({ value, label, Icon }) => (
                   <button
                     key={value}
@@ -389,6 +446,19 @@ export const MainApp = () => {
                     onClick={() => updatePreferences({ theme: value })}
                   >
                     <Icon size={15} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="appearance-setting">
+              <div className="appearance-copy">
+                <strong>{t('Language')}</strong>
+                <span>{t('Choose the language used throughout Growise.')}</span>
+              </div>
+              <div className="theme-options" role="group" aria-label={t('Language')}>
+                {([{ value: 'en', label: t('English') }, { value: 'hu', label: t('Hungarian') }] as const).map(({ value, label }) => (
+                  <button key={value} type="button" className={`theme-option ${language === value ? 'is-active' : ''}`} aria-pressed={language === value} onClick={() => updatePreferences({ language: value })}>
                     {label}
                   </button>
                 ))}
@@ -408,8 +478,8 @@ export const MainApp = () => {
                   >
                     <span className="settings-module-icon"><Icon size={19} /></span>
                     <span className="settings-module-copy">
-                      <strong>{module.name}</strong>
-                      <span>{module.description}</span>
+                      <strong>{moduleName(language, module.key, module.name)}</strong>
+                        <span>{moduleDescription(language, module.key, module.description)}</span>
                     </span>
                     <span className={`toggle-switch ${enabled ? 'enabled' : ''}`} aria-hidden="true">
                       <span />
@@ -419,8 +489,8 @@ export const MainApp = () => {
               })}
             </div>
             <div className="settings-footer">
-              <span className="local-note"><LockIcon /> Saved on this device</span>
-              <button className="primary-button" type="button" onClick={() => setIsSettingsOpen(false)}>Done</button>
+              <span className="local-note"><LockIcon /> {t('Saved on this device')}</span>
+              <button className="primary-button" type="button" onClick={() => setIsSettingsOpen(false)}>{t('Done')}</button>
             </div>
           </section>
         </div>

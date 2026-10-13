@@ -3,6 +3,7 @@ import { ArrowRight, Leaf, LockKeyhole, Mail, UserRound } from 'lucide-react';
 import { useUserStore } from '@/infrastructure/auth/useUserStore';
 import { createLocalAccount, verifyLocalAccount } from '@/infrastructure/auth/localAuth';
 import type { User } from '@/shared/types';
+import { translate, type Language } from '@/shared/i18n';
 
 export const AuthFlow = () => {
   const user = useUserStore((state) => state.user);
@@ -11,6 +12,8 @@ export const AuthFlow = () => {
   const [isLogin, setIsLogin] = useState(Boolean(user));
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const language = (user?.preferences.language ?? 'en') as Language;
+  const t = (text: string) => translate(language, text);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -23,15 +26,15 @@ export const AuthFlow = () => {
     const confirmPassword = String(formData.get('confirmPassword') ?? '');
 
     if (!email || !password || (!isLogin && !username)) {
-      setError('Please complete all required fields.');
+      setError(t('Please complete all required fields.'));
       return;
     }
     if (!isLogin && password.length < 8) {
-      setError('Use at least 8 characters for your password.');
+      setError(t('Use at least 8 characters for your password.'));
       return;
     }
     if (!isLogin && password !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError(t('Passwords do not match.'));
       return;
     }
 
@@ -40,11 +43,11 @@ export const AuthFlow = () => {
       if (isLogin) {
         const verified = await verifyLocalAccount(email, password);
         if (!verified) {
-          setError('Email or password is incorrect.');
+          setError(t('Email or password is incorrect.'));
           return;
         }
         if (!user || user.email.toLowerCase() !== email.trim().toLowerCase()) {
-          setError('The local profile is missing. Create a new local account.');
+          setError(t('The local profile is missing. Create a new local account.'));
           return;
         }
         login();
@@ -75,7 +78,7 @@ export const AuthFlow = () => {
       setError(
         submitError instanceof Error
           ? submitError.message
-          : 'Could not complete account setup.',
+          : t('Could not complete account setup.'),
       );
     } finally {
       setIsSubmitting(false);
@@ -86,18 +89,18 @@ export const AuthFlow = () => {
     <main className="auth-screen">
       <div className="auth-card">
         <div className="brand-mark"><Leaf size={19} /></div>
-        <p className="eyebrow">A calmer space to grow</p>
-        <h1>{isLogin ? 'Welcome back' : 'Make room for what matters.'}</h1>
+        <p className="eyebrow">{t('A calmer space to grow')}</p>
+        <h1>{t(isLogin ? 'Welcome back' : 'Make room for what matters.')}</h1>
         <p className="auth-intro">
           {isLogin
-            ? 'Sign in to your local Growise profile.'
-            : 'Start with the tools that fit your life. You can change them whenever you like.'}
+            ? t('Sign in to your local Growise profile.')
+            : t('Start with the tools that fit your life. You can change them whenever you like.')}
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form">
           {!isLogin && (
             <label className="field">
-              <span>Your name</span>
+              <span>{t('Your name')}</span>
               <div className="input-wrap">
                 <UserRound size={18} />
                 <input
@@ -110,7 +113,7 @@ export const AuthFlow = () => {
             </label>
           )}
           <label className="field">
-            <span>Email</span>
+            <span>{t('Email')}</span>
             <div className="input-wrap">
               <Mail size={18} />
               <input
@@ -124,14 +127,14 @@ export const AuthFlow = () => {
             </div>
           </label>
           <label className="field">
-            <span>Password</span>
+            <span>{t('Password')}</span>
             <div className="input-wrap">
               <LockKeyhole size={18} />
               <input
                 name="password"
                 type="password"
                 autoComplete={isLogin ? 'current-password' : 'new-password'}
-                placeholder={isLogin ? 'Your password' : 'At least 8 characters'}
+                placeholder={t(isLogin ? 'Your password' : 'At least 8 characters')}
                 minLength={isLogin ? undefined : 8}
                 required
               />
@@ -139,14 +142,14 @@ export const AuthFlow = () => {
           </label>
           {!isLogin && (
             <label className="field">
-              <span>Confirm password</span>
+              <span>{t('Confirm password')}</span>
               <div className="input-wrap">
                 <LockKeyhole size={18} />
                 <input
                   name="confirmPassword"
                   type="password"
                   autoComplete="new-password"
-                  placeholder="Enter your password again"
+                  placeholder={t('Enter your password again')}
                   minLength={8}
                   required
                 />
@@ -157,13 +160,13 @@ export const AuthFlow = () => {
           {error && <p className="form-error" role="alert">{error}</p>}
 
           <button className="primary-button auth-submit" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Please wait…' : isLogin ? 'Sign in' : 'Create local account'}
+            {isSubmitting ? t('Please wait…') : t(isLogin ? 'Sign in' : 'Create local account')}
             {!isSubmitting && <ArrowRight size={17} />}
           </button>
         </form>
 
         <p className="auth-switch">
-          {isLogin ? 'New to Growise?' : 'Already have a local account?'}{' '}
+          {t(isLogin ? 'New to Growise?' : 'Already have a local account?')}{' '}
           <button
             type="button"
             onClick={() => {
@@ -171,10 +174,10 @@ export const AuthFlow = () => {
               setError('');
             }}
           >
-            {isLogin ? 'Create account' : 'Sign in'}
+            {t(isLogin ? 'Create account' : 'Sign in')}
           </button>
         </p>
-        <p className="local-note">Your account and preferences stay on this device.</p>
+        <p className="local-note">{t('Your account and preferences stay on this device.')}</p>
       </div>
     </main>
   );

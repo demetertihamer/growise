@@ -35,14 +35,28 @@ export interface EntityLink extends Entity {
 
 export interface Task extends Entity {
   title: string;
+  listId?: EntityId;
   description?: string;
   status: "todo" | "inProgress" | "done" | "cancelled";
   priority: "low" | "medium" | "high";
   dueAt?: Instant;
-  plannedFor?: LocalDate;
   parentTaskId?: EntityId;
+  projectId?: EntityId;
   goalIds: EntityId[];
   tagIds: EntityId[];
+  pinned?: boolean;
+  schedule?: {
+    kind: "once" | "interval" | "weekly";
+    intervalDays?: number;
+    weekdays?: number[];
+    startDate?: LocalDate;
+    deadline?: Instant;
+  };
+}
+
+export interface TaskList extends Entity {
+  name: string;
+  color?: string;
 }
 
 export interface Goal extends Entity {
@@ -53,11 +67,27 @@ export interface Goal extends Entity {
   completedAt?: Instant;
 }
 
+export interface Project extends Entity {
+  title: string;
+  description?: string;
+  status: "active" | "completed" | "paused" | "cancelled";
+  goalIds: EntityId[];
+  targetDate?: LocalDate;
+}
+
 export interface Note extends Entity {
   title: string;
   markdown: string;
   date?: LocalDate;
+  projectId?: EntityId;
   tagIds: EntityId[];
+  order?: number;
+}
+
+export interface Resource extends Entity {
+  title: string;
+  url: string;
+  description?: string;
 }
 
 export interface JournalEntry extends Entity {
@@ -91,6 +121,7 @@ export interface FocusSession extends Entity {
   plannedSeconds: number;
   startedAt: Instant;
   endedAt?: Instant;
+  notes?: string;
 }
 
 export interface CalendarEntry extends Entity {
@@ -106,8 +137,17 @@ export interface Transaction extends Entity {
   amountMinor: number;
   currency: string;
   occurredAt: Instant;
+  category?: string;
   categoryId?: EntityId;
   note?: string;
+}
+
+export interface FinancePlan extends Entity {
+  title: string;
+  categories: Array<{ name: string; percentage: number }>;
+  currency: string;
+  month: string;
+  notes?: string;
 }
 
 export interface FitnessExercise {
@@ -126,6 +166,13 @@ export interface FitnessPlan extends Entity {
   scheduledDays: number[];
   exercises: FitnessExercise[];
   archived: boolean;
+}
+
+export interface FitnessGoal extends Entity {
+  title: string;
+  target?: string;
+  deadline?: LocalDate;
+  completed: boolean;
 }
 
 export interface WorkoutSession extends Entity {
@@ -153,7 +200,9 @@ export interface Tag extends Entity {
 // Module availability
 export type ModuleKey =
   | "tasks"
+  | "projects"
   | "notes"
+  | "resources"
   | "focus"
   | "habits"
   | "calendar"
@@ -168,7 +217,9 @@ export interface ModuleConfig {
   description: string;
   icon:
     | "ListTodo"
+    | "FolderKanban"
     | "NotebookPen"
+    | "Link2"
     | "Timer"
     | "ChartNoAxesColumnIncreasing"
     | "CalendarDays"
@@ -185,7 +236,7 @@ export interface UserPreferences extends Entity {
   enabledModules: ModuleKey[];
   onboardingCompleted: boolean;
   theme: "light" | "dark" | "system";
-  language: string;
+  language: "en" | "hu";
 }
 
 export interface User extends Entity {

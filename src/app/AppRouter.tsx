@@ -15,12 +15,13 @@ export const AppRouter = () => {
       const isDark = preference === 'dark' || (preference === 'system' && media.matches);
       document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
       document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+      document.documentElement.lang = user?.preferences.language === 'hu' ? 'hu' : 'en';
     };
 
     applyTheme();
     media.addEventListener('change', applyTheme);
     return () => media.removeEventListener('change', applyTheme);
-  }, [user?.preferences.theme]);
+  }, [user?.preferences.theme, user?.preferences.language]);
 
   if (!isAuthenticated || !user) {
     return <AuthFlow />;
