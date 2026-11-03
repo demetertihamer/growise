@@ -2215,6 +2215,16 @@ html[data-theme="dark"] .carousel-item.is-active .carousel-item-label {
   color: #e8eaed;
 }
 
+html[data-theme="dark"] .modules-carousel.is-desktop .carousel-item-label,
+html[data-theme="dark"] .modules-carousel.is-desktop .carousel-item.is-active .carousel-item-label {
+  color: #e8eaed;
+}
+
+html[data-theme="dark"] .modules-carousel.is-desktop .carousel-item:hover .carousel-item-label,
+html[data-theme="dark"] .modules-carousel.is-desktop .carousel-item:focus-visible .carousel-item-label {
+  color: #fff;
+}
+
 @media (max-width: 640px) {
   .modules-carousel {
     bottom: 18px;
