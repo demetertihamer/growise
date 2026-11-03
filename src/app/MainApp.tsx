@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUpRight,
   ChevronLeft,
@@ -30,7 +30,7 @@ import { MODULE_REGISTRY } from '@/shared/domain/moduleRegistry';
 import type { ModuleKey } from '@/shared/types';
 import { moduleDescription, moduleName, translate, type Language } from '@/shared/i18n';
 import { ModuleWorkspace } from './ModuleWorkspace';
-import type { CSSProperties, TouchEvent } from 'react';
+import type { CSSProperties, DragEvent, TouchEvent } from 'react';
 
 const MODULE_ICONS: Record<string, LucideIcon> = {
   ListTodo,
@@ -74,6 +74,7 @@ export const MainApp = () => {
   const [isDesktopLauncher, setIsDesktopLauncher] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [draggedModule, setDraggedModule] = useState<ModuleKey | null>(null);
+  const [moduleDropIndex, setModuleDropIndex] = useState<number | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const carouselPointerX = useRef<number | null>(null);
 
@@ -132,15 +133,24 @@ export const MainApp = () => {
     if (isEnabled && selectedModule === module) setSelectedModule(null);
   };
 
-  const reorderModules = (source: ModuleKey, target: ModuleKey) => {
-    if (source === target || !user) return;
+  const reorderModules = (source: ModuleKey, insertionIndex: number) => {
+    if (!user) return;
     const ordered = [...user.preferences.enabledModules];
     const sourceIndex = ordered.indexOf(source);
-    const targetIndex = ordered.indexOf(target);
-    if (sourceIndex < 0 || targetIndex < 0) return;
+    if (sourceIndex < 0) return;
     ordered.splice(sourceIndex, 1);
-    ordered.splice(targetIndex, 0, source);
+    const destinationIndex = sourceIndex < insertionIndex ? insertionIndex - 1 : insertionIndex;
+    if (sourceIndex === destinationIndex) return;
+    ordered.splice(destinationIndex, 0, source);
     updatePreferences({ enabledModules: ordered });
+  };
+
+  const handleModuleDragOver = (event: DragEvent<HTMLButtonElement>, index: number) => {
+    event.preventDefault();
+    if (!draggedModule) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const insertionIndex = event.clientX < bounds.left + bounds.width / 2 ? index : index + 1;
+    setModuleDropIndex(insertionIndex);
   };
 
   const selectModule = (module: ModuleKey) => {
@@ -293,29 +303,41 @@ export const MainApp = () => {
               <div className="module-summary">
                 <span className="eyebrow">{t('YOUR MODULES')}</span>
                 <div className="summary-list">
-                  {modules.map((module) => {
+                  {moduleDropIndex === 0 && <span className="summary-drop-indicator" aria-hidden="true" />}
+                  {modules.map((module, index) => {
                     const Icon = MODULE_ICONS[module.icon] ?? LayoutGrid;
                     return (
-                      <button
-                        key={module.key}
-                        type="button"
-                        draggable
-                        className={draggedModule === module.key ? 'is-dragging' : ''}
-                        onDragStart={() => setDraggedModule(module.key)}
-                        onDragEnd={() => setDraggedModule(null)}
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={() => {
-                          if (draggedModule) reorderModules(draggedModule, module.key);
-                          setDraggedModule(null);
-                        }}
-                        onClick={() => selectModule(module.key)}
-                        aria-label={`${t('Open')} ${moduleName(language, module.key, module.name)}. ${t('Drag to reorder.')}`}
-                      >
-                        <GripVertical size={14} className="summary-drag-handle" aria-hidden="true" />
-                        <span className="summary-icon"><Icon size={16} /></span>
-                        {moduleName(language, module.key, module.name)}
-                        <ArrowUpRight size={14} className="summary-arrow" />
-                      </button>
+                      <Fragment key={module.key}>
+                        <button
+                          type="button"
+                          draggable
+                          className={draggedModule === module.key ? 'is-dragging' : ''}
+                          onDragStart={() => {
+                            setDraggedModule(module.key);
+                            setModuleDropIndex(index);
+                          }}
+                          onDragEnd={() => {
+                            setDraggedModule(null);
+                            setModuleDropIndex(null);
+                          }}
+                          onDragOver={(event) => handleModuleDragOver(event, index)}
+                          onDrop={() => {
+                            if (draggedModule && moduleDropIndex !== null) {
+                              reorderModules(draggedModule, moduleDropIndex);
+                            }
+                            setDraggedModule(null);
+                            setModuleDropIndex(null);
+                          }}
+                          onClick={() => selectModule(module.key)}
+                          aria-label={`${t('Open')} ${moduleName(language, module.key, module.name)}. ${t('Drag to reorder.')}`}
+                        >
+                          <GripVertical size={14} className="summary-drag-handle" aria-hidden="true" />
+                          <span className="summary-icon"><Icon size={16} /></span>
+                          {moduleName(language, module.key, module.name)}
+                          <ArrowUpRight size={14} className="summary-arrow" />
+                        </button>
+                        {moduleDropIndex === index + 1 && <span className="summary-drop-indicator" aria-hidden="true" />}
+                      </Fragment>
                     );
                   })}
                 </div>

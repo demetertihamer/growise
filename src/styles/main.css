@@ -398,6 +398,16 @@ input:focus-visible {
   margin-top: 13px;
 }
 
+.summary-drop-indicator {
+  width: 2px;
+  min-height: 39px;
+  flex: 0 0 2px;
+  border-radius: 999px;
+  background: #b7cdb9;
+  box-shadow: 0 0 0 1px rgb(183 205 185 / 14%);
+  pointer-events: none;
+}
+
 .summary-list button {
   display: inline-flex;
   align-items: center;
