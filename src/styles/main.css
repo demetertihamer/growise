@@ -1938,6 +1938,21 @@ input:focus-visible {
     font-weight: 600;
   }
 
+  .modules-carousel.is-desktop .carousel-item {
+    transition: transform 160ms ease, filter 160ms ease;
+  }
+
+  .modules-carousel.is-desktop .carousel-item:hover,
+  .modules-carousel.is-desktop .carousel-item:focus-visible {
+    transform: translate(-50%, calc(-50% + var(--carousel-y))) scale(1.04);
+    filter: brightness(1.02);
+  }
+
+  .modules-carousel.is-desktop .carousel-item:hover .carousel-item-label,
+  .modules-carousel.is-desktop .carousel-item:focus-visible .carousel-item-label {
+    font-weight: 700;
+  }
+
   .carousel-trigger {
     top: 50%;
     right: auto;
